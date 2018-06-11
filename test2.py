@@ -65,13 +65,13 @@ DBSession = sessionmaker(bind=engine)
 session = DBSession()
 
 browser = webdriver.Chrome("C:\\Users\master\Desktop\pythonstuff\chromedriver.exe")
-browser.get("https://new.reddit.com/r/Bitcoin/new/")
+browser.get("https://reddit.com/r/Bitcoin/new/")
 while True:
     time.sleep(5)
     browser.refresh()
     time.sleep(5)
 
-    for i in range(0, 20):
+    for i in range(0, 100):
         time.sleep(5)
         browser.execute_script(
             "window.scrollTo(0, document.body.scrollHeight);")
