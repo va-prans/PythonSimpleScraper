@@ -8,6 +8,7 @@ import decimal
 import plotly as py
 import plotly.graph_objs as go
 from plotly import tools
+import datetime
 
 engine = create_engine('mysql+mysqldb://root:@127.0.0.1:3306/redditscrape?charset=utf8', pool_recycle=3600,
                        encoding='utf-8')
@@ -86,3 +87,24 @@ fig.append_trace(barNegPol, 2, 3)
 fig['layout'].update(height=800, width=1200, title='Reddit Scraper')
 
 py.offline.plot(fig, filename='redditStats.html')
+
+wordCounts = session.query(WordCount).filter(WordCount.date == datetime.datetime(2018, 6, 11)).order_by(WordCount.count).all()
+xWordVal = []
+yWordCount = []
+count = 0
+for word in reversed(wordCounts):
+    print(word.word + " " + str(word.count))
+    xWordVal.append(word.word)
+    yWordCount.append(word.count)
+    count += 1
+    if count > 100:
+        break
+
+barData = [go.Bar(
+    x=xWordVal,
+    y=yWordCount
+)]
+layout = go.Layout(xaxis=dict(type='category'),
+                   yaxis=dict(title='Word Count'))
+fig1 = go.Figure(data=barData, layout=layout)
+py.offline.plot(fig1, filename='redditWordCount.html')
