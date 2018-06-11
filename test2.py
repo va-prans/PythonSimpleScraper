@@ -11,25 +11,6 @@ from sqlalchemy import Sequence
 from sqlalchemy.orm import sessionmaker
 import decimal
 
-browser = webdriver.Chrome("C:\\Users\master\Desktop\pythonstuff\chromedriver.exe")
-browser.get("https://new.reddit.com/r/Bitcoin/new/")
-time.sleep(5)
-browser.refresh()
-time.sleep(5)
-
-for i in range(0, 20):
-    time.sleep(5)
-    browser.execute_script(
-        "window.scrollTo(0, document.body.scrollHeight);")
-# Now that the page is fully scrolled, grab the source code.
-time.sleep(10)
-source_data = browser.page_source
-
-# Throw your source into BeautifulSoup and start parsing!
-soup = bs(source_data, "html5lib")
-threads = soup.find_all('div', class_="scrollerItem")
-now = datetime.datetime.now()
-
 engine = create_engine('mysql+mysqldb://root:@127.0.0.1:3306/redditscrape?charset=utf8', pool_recycle=3600,
                        encoding='utf-8')
 Base = declarative_base()
@@ -66,115 +47,146 @@ Base.metadata.create_all(engine)
 DBSession = sessionmaker(bind=engine)
 session = DBSession()
 
-for div in threads:
-    print("----------------------")
-    div_descendants = div.descendants
-    post = Post()
-    for descElement in div_descendants:
-        if descElement.name == 'h2':
-            print(descElement.text)
-            print(TextBlob(descElement.text).sentiment)
-            post.title = descElement.text
-            post.polarity = round(TextBlob(descElement.text).sentiment.polarity, 2)
-            post.subjectivity = round(TextBlob(descElement.text).sentiment.subjectivity, 2)
+browser = webdriver.Chrome("C:\\Users\master\Desktop\pythonstuff\chromedriver.exe")
+browser.get("https://new.reddit.com/r/Bitcoin/new/")
+while True:
+    time.sleep(5)
+    browser.refresh()
+    time.sleep(5)
 
-        if descElement.name == 'a' and descElement.get('data-click-id') == 'body':
-            print(descElement.get("href"))
-            post.url = descElement.get("href")
+    for i in range(0, 20):
+        time.sleep(5)
+        browser.execute_script(
+            "window.scrollTo(0, document.body.scrollHeight);")
+    # Now that the page is fully scrolled, grab the source code.
+    time.sleep(10)
+    source_data = browser.page_source
 
-        if descElement.name == 'a' and descElement.get('data-click-id') == 'timestamp':
+    # Throw your source into BeautifulSoup and start parsing!
+    soup = bs(source_data, "html5lib")
+    threads = soup.find_all('div', class_="scrollerItem")
+    now = datetime.datetime.now()
 
-            wordList = descElement.text.split(" ")
-
-            postDate = now
-            if wordList[1] == "minutes" or wordList[1] == "minute":
-                timeSincePost = int(wordList[0])
-                postDate = now - datetime.timedelta(minutes=int(wordList[0]))
-
-            elif wordList[1] == "hours" or wordList[1] == "hour":
-                timeSincePost = int(wordList[0])
-                postDate = now - datetime.timedelta(hours=int(wordList[0]))
-
-            elif wordList[1] == "days" or wordList[1] == "day":
-                timeSincePost = int(wordList[0])
-                postDate = now - datetime.timedelta(days=int(wordList[0]))
-
-            print(descElement.text)
-            print(postDate)
-            postDate = postDate.replace(microsecond=0)
-            post.date = datetime.datetime(postDate.year, postDate.month, postDate.day, postDate.hour, postDate.minute)
-
-        if descElement.name == 'a' and descElement.get('data-click-id') == 'comments':
-            print(descElement.text)
-            commentCount = 0
-            if descElement.text[0] != "c":
-                commentCount = int(descElement.text[0])
-            post.comment_count = commentCount
-
-        if descElement.name == 'a' and descElement.get('data-click-id') != 'body' and descElement.get(
-                'data-click-id') != 'timestamp' and descElement.get('data-click-id') != 'comments':
-            if len(descElement.text) > 0 and descElement.text[0] == 'u':
+    for div in threads:
+        print("----------------------")
+        div_descendants = div.descendants
+        post = Post()
+        for descElement in div_descendants:
+            if descElement.name == 'h2':
                 print(descElement.text)
-                post.user = descElement.text
+                print(TextBlob(descElement.text).sentiment)
+                post.title = descElement.text
+                post.polarity = round(TextBlob(descElement.text).sentiment.polarity, 2)
+                post.subjectivity = round(TextBlob(descElement.text).sentiment.subjectivity, 2)
 
-    if session.query(Post.url).filter_by(url=post.url).scalar() is None:
-        print("New post! Adding to Database!")
-        post.isParsed = False
-        session.add(post)
-    else:
-        session.query(Post).filter(Post.url == post.url). \
-            update({Post.comment_count: post.comment_count})
+            if descElement.name == 'a' and descElement.get('data-click-id') == 'body':
+                print(descElement.get("href"))
+                post.url = descElement.get("href")
 
-session.commit()
+            if descElement.name == 'a' and descElement.get('data-click-id') == 'timestamp':
 
-unParsedPosts = session.query(Post).filter(Post.isParsed == False)
-unParsedPosts.all()
-nowTime = datetime.datetime.now()
-for unparsedPost in unParsedPosts:
-    print(unparsedPost.url)
+                wordList = descElement.text.split(" ")
 
-    #update post age detector
-    if unparsedPost.date <= nowTime - datetime.timedelta(hours=24):
-        print("Post age is larger than 24 hours.")
-        session.query(Post).filter(Post.url == unparsedPost.url). \
-            update({Post.isParsed: True})
-        dailyStat = session.query(DailyStats).filter(DailyStats.date == datetime.datetime(unparsedPost.date.year, unparsedPost.date.month, unparsedPost.date.day))
-        if dailyStat.scalar() is None:
-            print("No daily stat found for day: " + unparsedPost.date.strftime('%d/%m/%Y'))
-            newDailyStat = DailyStats()
-            newDailyStat.date = datetime.datetime(unparsedPost.date.year, unparsedPost.date.month, unparsedPost.date.day)
-            newDailyStat.posts = 1
-            newDailyStat.comments = unparsedPost.comment_count
-            newDailyStat.comments_per_post = newDailyStat.comments/newDailyStat.posts
-            newDailyStat.subjectivity = unparsedPost.subjectivity
-            if unparsedPost.polarity < 0:
-                newDailyStat.negative_polarity = unparsedPost.polarity
-                newDailyStat.net_polarity = unparsedPost.polarity
+                postDate = now
+                if wordList[1] == "minutes" or wordList[1] == "minute":
+                    timeSincePost = int(wordList[0])
+                    postDate = now - datetime.timedelta(minutes=int(wordList[0]))
+
+                elif wordList[1] == "hours" or wordList[1] == "hour":
+                    timeSincePost = int(wordList[0])
+                    postDate = now - datetime.timedelta(hours=int(wordList[0]))
+
+                elif wordList[1] == "days" or wordList[1] == "day":
+                    timeSincePost = int(wordList[0])
+                    postDate = now - datetime.timedelta(days=int(wordList[0]))
+
+                print(descElement.text)
+                print(postDate)
+                postDate = postDate.replace(microsecond=0)
+                post.date = datetime.datetime(postDate.year, postDate.month, postDate.day, postDate.hour,
+                                              postDate.minute)
+
+            if descElement.name == 'a' and descElement.get('data-click-id') == 'comments':
+                print(descElement.text)
+                commentCount = 0
+                if descElement.text[0] != "c":
+                    commentCount = int(descElement.text[0])
+                post.comment_count = commentCount
+
+            if descElement.name == 'a' and descElement.get('data-click-id') != 'body' and descElement.get(
+                    'data-click-id') != 'timestamp' and descElement.get('data-click-id') != 'comments':
+                if len(descElement.text) > 0 and descElement.text[0] == 'u':
+                    print(descElement.text)
+                    post.user = descElement.text
+
+        if session.query(Post.url).filter_by(url=post.url).scalar() is None:
+            print("New post! Adding to Database!")
+            post.isParsed = False
+            session.add(post)
+        else:
+            session.query(Post).filter(Post.url == post.url). \
+                update({Post.comment_count: post.comment_count})
+
+    session.commit()
+
+    unParsedPosts = session.query(Post).filter(Post.isParsed == False)
+    unParsedPosts.all()
+    nowTime = datetime.datetime.now()
+    for unparsedPost in unParsedPosts:
+        print(unparsedPost.url)
+
+
+
+        # update post age detector
+        if unparsedPost.date <= nowTime - datetime.timedelta(hours=24):
+            print("Post age is larger than 24 hours.")
+            session.query(Post).filter(Post.url == unparsedPost.url). \
+                update({Post.isParsed: True})
+            dailyStat = session.query(DailyStats).filter(
+                DailyStats.date == datetime.datetime(unparsedPost.date.year, unparsedPost.date.month,
+                                                     unparsedPost.date.day))
+            if dailyStat.scalar() is None:
+                print("No daily stat found for day: " + unparsedPost.date.strftime('%d/%m/%Y'))
+                newDailyStat = DailyStats()
+                newDailyStat.date = datetime.datetime(unparsedPost.date.year, unparsedPost.date.month,
+                                                      unparsedPost.date.day)
+                newDailyStat.posts = 1
+                newDailyStat.comments = unparsedPost.comment_count
+                newDailyStat.comments_per_post = newDailyStat.comments / newDailyStat.posts
+                newDailyStat.subjectivity = unparsedPost.subjectivity
+                if unparsedPost.polarity < 0:
+                    newDailyStat.negative_polarity = unparsedPost.polarity
+                    newDailyStat.net_polarity = unparsedPost.polarity
+                    newDailyStat.positive_polarity = 0
+
+                else:
+                    newDailyStat.positive_polarity = unparsedPost.polarity
+                    newDailyStat.net_polarity = unparsedPost.polarity
+                    newDailyStat.negative_polarity = 0
+
+                session.add(newDailyStat)
+                session.commit()
 
             else:
-                newDailyStat.positive_polarity = unparsedPost.polarity
-                newDailyStat.net_polarity = unparsedPost.polarity
-
-            session.add(newDailyStat)
+                if unparsedPost.polarity < 0:
+                    dailyStat. \
+                        update({DailyStats.posts: DailyStats.posts + 1,
+                                DailyStats.comments: DailyStats.comments + unparsedPost.comment_count,
+                                DailyStats.comments_per_post: DailyStats.comments / DailyStats.posts,
+                                DailyStats.negative_polarity: DailyStats.negative_polarity - unparsedPost.polarity,
+                                DailyStats.net_polarity: DailyStats.net_polarity - unparsedPost.polarity,
+                                DailyStats.subjectivity: DailyStats.subjectivity + unparsedPost.subjectivity})
+                else:
+                    dailyStat. \
+                        update({DailyStats.posts: DailyStats.posts + 1,
+                                DailyStats.comments: DailyStats.comments + unparsedPost.comment_count,
+                                DailyStats.comments_per_post: DailyStats.comments / DailyStats.posts,
+                                DailyStats.positive_polarity: DailyStats.positive_polarity + unparsedPost.polarity,
+                                DailyStats.net_polarity: DailyStats.net_polarity + unparsedPost.polarity,
+                                DailyStats.subjectivity: DailyStats.subjectivity + unparsedPost.subjectivity})
             session.commit()
 
-        else:
-            if unparsedPost.polarity < 0:
-                dailyStat. \
-                    update({DailyStats.posts: DailyStats.posts + 1,
-                            DailyStats.comments: DailyStats.comments + unparsedPost.comment_count,
-                            DailyStats.comments_per_post: DailyStats.comments / DailyStats.posts,
-                            DailyStats.negative_polarity: unparsedPost.polarity,
-                            DailyStats.net_polarity: DailyStats.net_polarity - unparsedPost.polarity,
-                            DailyStats.subjectivity: DailyStats.subjectivity + unparsedPost.subjectivity})
-            else:
-                dailyStat. \
-                    update({DailyStats.posts: DailyStats.posts + 1,
-                            DailyStats.comments: DailyStats.comments + unparsedPost.comment_count,
-                            DailyStats.comments_per_post: DailyStats.comments / DailyStats.posts,
-                            DailyStats.positive_polarity: unparsedPost.polarity,
-                            DailyStats.net_polarity: DailyStats.net_polarity + unparsedPost.polarity,
-                            DailyStats.subjectivity: DailyStats.subjectivity + unparsedPost.subjectivity})
-        session.commit()
+    session.commit()
+    print("Waiting an hour before reading posts again..")
+    time.sleep(60*60)
 
-session.commit()
