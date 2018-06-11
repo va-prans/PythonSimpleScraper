@@ -40,8 +40,25 @@ class DailyStats(Base):
     subjectivity = Column(DECIMAL(4, 2))
 
 
+Column(Integer, Sequence('user_id_seq'), primary_key=True)
+
+
+class WordCount(Base):
+    __tablename__ = 'word_counts'
+    id = Column(Integer, Sequence('user_id_seq'), primary_key=True)
+    date = Column(DateTime, index=True)
+    word = Column(String(30), index=True)
+    count = Column(Integer)
+
+    def __init__(self, date, word, count):
+        self.date = date
+        self.word = word
+        self.count = count
+
+
 Post.__table__
 DailyStats.__table__
+WordCount.__table__
 
 Base.metadata.create_all(engine)
 DBSession = sessionmaker(bind=engine)
@@ -134,9 +151,24 @@ while True:
     nowTime = datetime.datetime.now()
     for unparsedPost in unParsedPosts:
         print(unparsedPost.url)
+        postWords = unparsedPost.title.split(" ")
+        for word in postWords:
+            dailyWord = session.query(WordCount).filter(
+                WordCount.date == datetime.datetime(unparsedPost.date.year, unparsedPost.date.month,
+                                                    unparsedPost.date.day)). \
+                filter(WordCount.word == word)
+            if dailyWord.scalar() is None:
+                print("Word: " + word + " found for day: " + unparsedPost.date.strftime('%d/%m/%Y'))
+                date = datetime.datetime(unparsedPost.date.year, unparsedPost.date.month,
+                                         unparsedPost.date.day)
+                session.add(WordCount(date,
+                                      word,
+                                      1))
+            else:
+                print("Word: " + word + " exists for day: " + unparsedPost.date.strftime('%d/%m/%Y'))
+                dailyWord.update({WordCount.count: WordCount.count + 1})
 
-
-
+            session.commit()
         # update post age detector
         if unparsedPost.date <= nowTime - datetime.timedelta(hours=24):
             print("Post age is larger than 24 hours.")
@@ -188,5 +220,4 @@ while True:
 
     session.commit()
     print("Waiting an hour before reading posts again..")
-    time.sleep(60*60)
-
+    time.sleep(60 * 60)
